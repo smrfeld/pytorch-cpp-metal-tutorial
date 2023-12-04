@@ -1,4 +1,4 @@
-# Tutorial for Python package calling a custom PyTorch C++ module with Metal shader
+# Tutorial for (PyTorch) + (C++) + (Metal shader)
 
 This is a minimal example of a Python package calling a custom PyTorch C++ module that is using **Metal** shader (on Mac).
 
