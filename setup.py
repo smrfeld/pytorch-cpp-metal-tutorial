@@ -61,4 +61,4 @@ setup(
     ext_modules=get_extensions(),
     cmdclass={'build_ext': BuildExtension},
     zip_safe=False
-    )
+)
