@@ -5,6 +5,7 @@
 
 // Define a function to add tensors using Metal
 torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::string& shaderFilePath) {
+  
     // Ensure tensors are on the CPU and are contiguous
     a = a.to(torch::kCPU).contiguous();
     b = b.to(torch::kCPU).contiguous();
@@ -21,14 +22,6 @@ torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::str
         NSString stringWithContentsOfFile:[NSString stringWithUTF8String:shaderFilePath.c_str()]
         encoding:NSUTF8StringEncoding 
         error:&error];
-
-
-    // Load the Metal shader from a .metal file
-    /*
-    NSString* shaderSource = [NSString stringWithContentsOfFile:@"add_tensors.metal" 
-                                                       encoding:NSUTF8StringEncoding 
-                                                          error:&error];
-    */
     if (error) {
         throw std::runtime_error("Failed to load Metal shader: " + std::string(error.localizedDescription.UTF8String));
     }
@@ -92,6 +85,3 @@ torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::str
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("add_tensors_metal", &add_tensors_metal, "Add two tensors using Metal");
 }
-
-
-
