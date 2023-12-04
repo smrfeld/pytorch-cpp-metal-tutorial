@@ -58,7 +58,6 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     python_requires='>=3.11',
-    package_data={'my_extension': ['*.metal']},
     ext_modules=get_extensions(),
     cmdclass={'build_ext': BuildExtension},
     zip_safe=False
