@@ -40,7 +40,7 @@ def get_extensions():
             ]
 
     ext_ops = CppExtension(
-        name='my_extension',
+        name='my_extension_cpp',
         sources=['my_extension/cpp_extension.mm'],
         include_dirs=[],
         extra_objects=[],
@@ -58,6 +58,7 @@ setup(
     packages=find_packages(),
     include_package_data=True,
     python_requires='>=3.11',
+    package_data={'my_extension': ['*.metal']},
     ext_modules=get_extensions(),
     cmdclass={'build_ext': BuildExtension},
     zip_safe=False

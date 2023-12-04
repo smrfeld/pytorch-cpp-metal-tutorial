@@ -1,9 +1,10 @@
 #include <torch/extension.h>
 #include <Metal/Metal.h>
 #include <Foundation/Foundation.h>
+#include <iostream>
 
 // Define a function to add tensors using Metal
-torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b) {
+torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::string& shaderFilePath) {
     // Ensure tensors are on the CPU and are contiguous
     a = a.to(torch::kCPU).contiguous();
     b = b.to(torch::kCPU).contiguous();
@@ -14,26 +15,33 @@ torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b) {
     // Get the default Metal device
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
 
-    // Read the shader source from the .metal file
+    // Load the Metal shader from the specified path
     NSError* error = nil;
-    NSString* shaderFilePath = @"my_extension/add_tensors.metal"; // Replace with the actual path to the .metal file
-    NSString* shaderSource = [NSString stringWithContentsOfFile:shaderFilePath encoding:NSUTF8StringEncoding error:&error];
-    if (!shaderSource) {
-        NSLog(@"Error reading Metal shader file: %@", error.localizedDescription);
-        return torch::Tensor(); // Return an empty tensor or handle the error as appropriate
+    NSString* shaderSource = [
+        NSString stringWithContentsOfFile:[NSString stringWithUTF8String:shaderFilePath.c_str()]
+        encoding:NSUTF8StringEncoding 
+        error:&error];
+
+
+    // Load the Metal shader from a .metal file
+    /*
+    NSString* shaderSource = [NSString stringWithContentsOfFile:@"add_tensors.metal" 
+                                                       encoding:NSUTF8StringEncoding 
+                                                          error:&error];
+    */
+    if (error) {
+        throw std::runtime_error("Failed to load Metal shader: " + std::string(error.localizedDescription.UTF8String));
     }
 
     // Compile the Metal shader source
     id<MTLLibrary> library = [device newLibraryWithSource:shaderSource options:nil error:&error];
     if (!library) {
-        NSLog(@"Error compiling Metal shader: %@", error.localizedDescription);
-        return torch::Tensor();
+        throw std::runtime_error("Error compiling Metal shader: " + std::string(error.localizedDescription.UTF8String));
     }
 
     id<MTLFunction> function = [library newFunctionWithName:@"addTensors"];
     if (!function) {
-        NSLog(@"Error: Metal function addTensors not found.");
-        return torch::Tensor();
+        throw std::runtime_error("Error: Metal function addTensors not found.");
     }
 
     // Create a Metal compute pipeline state
@@ -82,7 +90,7 @@ torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b) {
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("add_tensors", &add_tensors_metal, "Add two tensors using Metal");
+    m.def("add_tensors_metal", &add_tensors_metal, "Add two tensors using Metal");
 }
 
 
