@@ -1,1 +1,1 @@
-from .extension import add_tensors
+from .wrapper import add_tensors
