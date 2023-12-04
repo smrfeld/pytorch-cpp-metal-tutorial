@@ -4,5 +4,5 @@ import torch
 my_extension_cpp = torch.ops.load_library("cpp_extension.so")
 
 # Define a wrapper function
-def initialize_metal():
-    return my_extension_cpp.initialize_metal()
+def add_tensors(a, b):
+    return my_extension_cpp.add_tensors(a, b)

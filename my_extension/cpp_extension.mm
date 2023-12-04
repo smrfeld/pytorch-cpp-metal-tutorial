@@ -1,80 +1,89 @@
-#include <iostream>
-#include <Metal/Metal.h>
 #include <torch/extension.h>
+#include <Metal/Metal.h>
+#include <Foundation/Foundation.h>
 
-// Define a simple function to add tensors using Metal shader
+// Define a function to add tensors using Metal
 torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b) {
-    // Get the Metal device
+    // Ensure tensors are on the CPU and are contiguous
+    a = a.to(torch::kCPU).contiguous();
+    b = b.to(torch::kCPU).contiguous();
+
+    // Get the total number of elements in the tensors
+    int numElements = a.numel();
+
+    // Get the default Metal device
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-    if (!device) {
-        throw std::runtime_error("Metal is not supported on this device.");
-    }
 
-    // Load the Metal shader from a .metal file (assuming add_tensors.metal is in the same directory)
+    // Read the shader source from the .metal file
     NSError* error = nil;
-    NSString* shaderSource = [NSString stringWithContentsOfFile:@"add_tensors.metal" 
-                                                       encoding:NSUTF8StringEncoding 
-                                                          error:&error];
-    if (error) {
-        throw std::runtime_error("Failed to load Metal shader: " + std::string(error.localizedDescription.UTF8String));
+    NSString* shaderFilePath = @"my_extension/add_tensors.metal"; // Replace with the actual path to the .metal file
+    NSString* shaderSource = [NSString stringWithContentsOfFile:shaderFilePath encoding:NSUTF8StringEncoding error:&error];
+    if (!shaderSource) {
+        NSLog(@"Error reading Metal shader file: %@", error.localizedDescription);
+        return torch::Tensor(); // Return an empty tensor or handle the error as appropriate
     }
 
-    MTLCompileOptions* compileOptions = [[MTLCompileOptions alloc] init];
-    compileOptions.preprocessorMacros = @{@"MTL_LANGUAGE_VERSION": @2};
-
-    id<MTLLibrary> library = [device newLibraryWithSource:shaderSource options:compileOptions error:&error];
-    if (error) {
-        throw std::runtime_error("Failed to compile Metal shader: " + std::string(error.localizedDescription.UTF8String));
+    // Compile the Metal shader source
+    id<MTLLibrary> library = [device newLibraryWithSource:shaderSource options:nil error:&error];
+    if (!library) {
+        NSLog(@"Error compiling Metal shader: %@", error.localizedDescription);
+        return torch::Tensor();
     }
 
-    id<MTLFunction> function = [library newFunctionWithName:@"add_tensors"];
-
-    // Create buffers for input and output data
-    int dataSize = a.numel() * sizeof(float); // Assuming a and b are float tensors
-    id<MTLBuffer> bufferA = [device newBufferWithBytes:a.data_ptr(), dataSize, MTLResourceStorageModeShared];
-    id<MTLBuffer> bufferB = [device newBufferWithBytes:b.data_ptr(), dataSize, MTLResourceStorageModeShared];
-    id<MTLBuffer> bufferResult = [device newBufferWithLength:dataSize options:MTLResourceStorageModeShared];
-
-    // Create a compute pipeline
-    MTLComputePipelineDescriptor* pipelineDesc = [[MTLComputePipelineDescriptor alloc] init];
-    pipelineDesc.computeFunction = function;
-
-    NSError* pipelineError = nil;
-    id<MTLComputePipelineState> pipelineState = [device newComputePipelineStateWithDescriptor:pipelineDesc error:&pipelineError];
-    if (pipelineError) {
-        throw std::runtime_error("Failed to create compute pipeline: " + std::string(pipelineError.localizedDescription.UTF8String));
+    id<MTLFunction> function = [library newFunctionWithName:@"addTensors"];
+    if (!function) {
+        NSLog(@"Error: Metal function addTensors not found.");
+        return torch::Tensor();
     }
 
-    // Create a compute command buffer
+    // Create a Metal compute pipeline state
+    id<MTLComputePipelineState> pipelineState = [device newComputePipelineStateWithFunction:function error:nil];
+
+    // Create Metal buffers for the tensors
+    id<MTLBuffer> aBuffer = [device newBufferWithBytes:a.data_ptr() length:(numElements * sizeof(float)) options:MTLResourceStorageModeShared];
+    id<MTLBuffer> bBuffer = [device newBufferWithBytes:b.data_ptr() length:(numElements * sizeof(float)) options:MTLResourceStorageModeShared];
+    id<MTLBuffer> resultBuffer = [device newBufferWithLength:(numElements * sizeof(float)) options:MTLResourceStorageModeShared];
+
+    // Create a command queue
     id<MTLCommandQueue> commandQueue = [device newCommandQueue];
+
+    // Create a command buffer
     id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
 
-    // Set input and output buffers
+    // Create a compute command encoder
     id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
-    [encoder setBuffer:bufferA offset:0 atIndex:0];
-    [encoder setBuffer:bufferB offset:0 atIndex:1];
-    [encoder setBuffer:bufferResult offset:0 atIndex:2];
 
-    // Calculate threadgroup and grid sizes based on tensor size
-    MTLSize threadgroupSize = MTLSizeMake(1, 1, 1);
-    MTLSize threadgroupCount = MTLSizeMake((a.numel() + threadgroupSize.width - 1) / threadgroupSize.width, 1, 1);
+    // Set the compute pipeline state
+    [encoder setComputePipelineState:pipelineState];
+
+    // Set the buffers
+    [encoder setBuffer:aBuffer offset:0 atIndex:0];
+    [encoder setBuffer:bBuffer offset:0 atIndex:1];
+    [encoder setBuffer:resultBuffer offset:0 atIndex:2];
 
     // Dispatch the compute kernel
-    [encoder dispatchThreadgroups:threadgroupCount threadsPerThreadgroup:threadgroupSize];
+    MTLSize gridSize = MTLSizeMake(numElements, 1, 1);
+    NSUInteger threadGroupSize = pipelineState.maxTotalThreadsPerThreadgroup;
+    if (threadGroupSize > numElements) {
+        threadGroupSize = numElements;
+    }
+    MTLSize threadgroupSize = MTLSizeMake(threadGroupSize, 1, 1);
+    [encoder dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
     [encoder endEncoding];
 
-    // Commit the command buffer and wait for completion
+    // Commit the command buffer and wait for it to complete
     [commandBuffer commit];
     [commandBuffer waitUntilCompleted];
 
-    // Create a new torch::Tensor from the result buffer
-    torch::Tensor result = torch::empty({a.size(0)}, torch::dtype(torch::kFloat32));
-    memcpy(result.data_ptr(), [bufferResult contents], dataSize);
+    // Copy the result back to a PyTorch tensor
+    torch::Tensor result = torch::from_blob(resultBuffer.contents, {numElements}, torch::kFloat).clone();
 
     return result;
 }
 
-// Bind the function to Python
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
-    m.def("add_tensors", &add_tensors_metal, "Add two tensors using Metal shader");
+    m.def("add_tensors", &add_tensors_metal, "Add two tensors using Metal");
 }
+
+
+
