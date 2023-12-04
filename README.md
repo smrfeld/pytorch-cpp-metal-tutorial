@@ -1,8 +1,6 @@
-# Tutorial for Python package calling a custom PyTorch C++ module
+# Tutorial for Python package calling a custom PyTorch C++ module with Metal shader
 
-https://github.com/open-mmlab/mmcv/blob/main/setup.py
-
-This is a minimal example of a Python package calling a custom PyTorch C++ module.
+This is a minimal example of a Python package calling a custom PyTorch C++ module that is using **Metal** shader (on Mac).
 
 ## Installing & running
 
@@ -31,3 +29,9 @@ This is a minimal example of a Python package calling a custom PyTorch C++ modul
     ```
     tensor([5., 7., 9.])
     ```
+
+## Other good examples
+
+* [https://github.com/open-mmlab/mmcv/blob/main/setup.py
+](https://github.com/open-mmlab/mmcv/blob/main/setup.py
+)
