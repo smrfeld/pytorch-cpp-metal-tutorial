@@ -60,5 +60,9 @@ setup(
     python_requires='>=3.11',
     ext_modules=get_extensions(),
     cmdclass={'build_ext': BuildExtension},
-    zip_safe=False
+    zip_safe=False,
+    requires=[
+        'torch',
+        'setuptools'
+        ]
 )

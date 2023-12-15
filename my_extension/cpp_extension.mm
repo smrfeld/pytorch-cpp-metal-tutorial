@@ -6,9 +6,15 @@
 // Define a function to add tensors using Metal
 torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::string& shaderFilePath) {
   
-    // Ensure tensors are on the CPU and are contiguous
-    a = a.to(torch::kCPU).contiguous();
-    b = b.to(torch::kCPU).contiguous();
+    // Check that device is MPS
+    if (a.device().type() != torch::kMPS || b.device().type() != torch::kMPS) {
+        throw std::runtime_error("Error: tensors must be on MPS device.");
+    }
+
+    // Check that tensors are contiguous
+    // Contiguous means that the memory is contiguous
+    a = a.contiguous();
+    b = b.contiguous();
 
     // Get the total number of elements in the tensors
     int numElements = a.numel();
@@ -76,8 +82,19 @@ torch::Tensor add_tensors_metal(torch::Tensor a, torch::Tensor b, const std::str
     [commandBuffer commit];
     [commandBuffer waitUntilCompleted];
 
+    // Create an empty tensor on the MPS device to hold the result
+    torch::Tensor result = torch::empty({numElements}, torch::TensorOptions().dtype(torch::kFloat).device(torch::kMPS));
+
+    // Copy the result from the Metal buffer to the MPS tensor
+    id<MTLBuffer> resultBufferMPS = [device newBufferWithBytesNoCopy:result.data_ptr()
+                                                                length:(numElements * sizeof(float))
+                                                            options:MTLResourceStorageModeShared
+                                                        deallocator:nil];
+
     // Copy the result back to a PyTorch tensor
-    torch::Tensor result = torch::from_blob(resultBuffer.contents, {numElements}, torch::kFloat).clone();
+    // The .clone() function is used to create a deep copy of the tensor. This is necessary because torch::from_blob creates a tensor that directly uses the memory from resultBuffer.contents, and this memory might be released or go out of scope. The cloned tensor still resides on the CPU.
+    // torch::Tensor result = torch::from_blob(resultBuffer.contents, {numElements}, torch::kFloat).clone();
+    // result = result.to(torch::kMPS);
 
     return result;
 }
